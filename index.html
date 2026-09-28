@@ -54,7 +54,7 @@ small{color:#666}
 <div id="phone">
   <div id="pcode" class="hide"><h2>ใส่รหัสสถานี</h2><input type="text" id="pcin" inputmode="numeric" style="max-width:220px;text-align:center;font-size:1.6rem"><div class="btns" style="max-width:220px;margin:12px auto"><button class="primary" id="pcgo">เชื่อมต่อ</button></div></div>
   <div id="pmain">
-    <div id="pv-idle"><h2>เชื่อมต่อแล้ว ✓</h2><p>รอเจ้าหน้าที่เริ่มขั้นตอน…</p><p><small>สถานี <b id="pcn"></b></small></p></div>
+    <div id="pv-idle"><h2 id="pidh">กำลังเชื่อมต่อ…</h2><p id="perr" style="color:#b00"></p><p>รอเจ้าหน้าที่เริ่มขั้นตอน…</p><p><small>สถานี <b id="pcn"></b></small></p></div>
     <div id="pv-fp" class="hide"><h2 id="pfph">สแกนนิ้วมือข้างขวา (1/2)</h2><p>วางนิ้วบนวงกลมแล้วกดค้างไว้ 3 วินาที</p><div id="pad"><i></i></div><p id="pfpt"></p></div>
     <div id="pv-wait" class="hide"><h2>ส่งลายนิ้วมือแล้ว ✓</h2><p>รอเจ้าหน้าที่ตรวจสอบบนคอมพิวเตอร์…</p><canvas id="pfp" width="620" height="360" style="width:270px;background:#fff;border:1px solid #999"></canvas></div>
     <div id="pv-sign" class="hide"><h2>เจ้าพนักงานเซ็นลายเซ็น</h2><canvas id="sigc" width="700" height="300"></canvas>
@@ -103,6 +103,7 @@ small{color:#666}
 
   <section class="box" id="flow">
     <label style="margin-top:0">รหัสสถานี (ใช้ตรงกับโทรศัพท์)<input type="text" id="code" inputmode="numeric"></label>
+    <div id="dbst" style="text-align:center;font-size:.85rem;color:#666;margin-top:6px">ฐานข้อมูล: กำลังเชื่อมต่อ…</div>
     <div id="pconn" style="text-align:center;font-size:.9rem;margin:6px 0">โทรศัพท์: ยังไม่เชื่อมต่อ</div>
     <button id="pair" style="width:100%">เชื่อมโทรศัพท์</button>
     <div id="pairbox" class="hide" style="text-align:center"><div id="qr"></div><div id="plink"></div><small>สแกน QR ด้วยโทรศัพท์ หรือเปิดลิงก์นี้บนโทรศัพท์</small></div>
@@ -394,14 +395,18 @@ function onState(v){
   else if(s==='sign_done'){setSt('ได้รับลายเซ็นแล้ว กำลังออกบัตร…');setBtns([]);finish(v)}
 }
 function makeQR(){
-  $('qr').innerHTML='';$('plink').textContent=phoneUrl();
+  $('qr').innerHTML='';$('plink').innerHTML=location.protocol==='file:'?'<b style="color:#b00">เปิดจากไฟล์ในเครื่องอยู่ โทรศัพท์จะเข้าลิงก์นี้ไม่ได้ ต้องเปิดผ่านเว็บ GitHub Pages (https://...) </b>':'<a href="'+phoneUrl()+'" target="_blank">'+phoneUrl()+'</a>';
   try{new QRCode($('qr'),{text:phoneUrl(),width:150,height:150})}catch(e){}
 }
+let dbWatch=false;
+const RULES_HINT='ไปที่ Firebase Console → Realtime Database → Rules แล้ววางกฎจากคำแนะนำ จากนั้นกด Publish';
 function listen(){
   if(ref)ref.off();
   code=($('code').value.trim()||'1234');$('code').value=code;localStorage.setItem('stationCode',code);
+  if(!dbWatch){dbWatch=true;db.ref('.info/connected').on('value',s=>{$('dbst').textContent=s.val()?'ฐานข้อมูล: เชื่อมต่อแล้ว ✓':'ฐานข้อมูล: ยังไม่เชื่อมต่อ (ตรวจสอบอินเทอร์เน็ต/databaseURL)'})}
   ref=db.ref('stations/'+code);
-  ref.on('value',s=>onState(s.val()||{state:'idle'}),e=>{setSt('เชื่อมต่อฐานข้อมูลไม่ได้ (ตรวจสอบ Rules ใน Firebase)')});
+  ref.on('value',s=>onState(s.val()||{state:'idle'}),e=>{setSt('อ่านฐานข้อมูลไม่ได้: '+(e.code||e.message));$('msg').textContent=RULES_HINT});
+  ref.child('host').set({ts:Date.now()}).catch(e=>{setSt('เขียนฐานข้อมูลไม่ได้: '+(e.code||e.message));$('msg').textContent=RULES_HINT});
   makeQR();
 }
 
@@ -413,7 +418,11 @@ function phoneListen(){
   $('pcode').classList.add('hide');$('pmain').classList.remove('hide');$('pcn').textContent=code;
   ref=db.ref('stations/'+code);
   const pr=ref.child('phone');
-  db.ref('.info/connected').on('value',s=>{if(s.val()){pr.onDisconnect().remove();pr.set({ts:Date.now()})}});
+  db.ref('.info/connected').on('value',s=>{
+    if(s.val()){pr.onDisconnect().remove();
+      pr.set({ts:Date.now()}).then(()=>{$('pidh').textContent='เชื่อมต่อแล้ว ✓'}).catch(e=>{$('pidh').textContent='เชื่อมต่อไม่ได้';$('perr').textContent=(e.code||e.message)+' — ต้องตั้ง Rules ใน Firebase ให้เขียนได้'});
+    }else{$('pidh').textContent='กำลังเชื่อมต่อ… (ตรวจสอบอินเทอร์เน็ต)'}
+  });
   ref.on('value',s=>{
     const v=s.val()||{state:'idle'};const prev=pstate;pstate=v.state||'idle';
     if(pstate==='idle')phoneShow('idle');
