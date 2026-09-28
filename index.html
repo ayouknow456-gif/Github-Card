@@ -16,7 +16,7 @@ main{max-width:1150px;margin:0 auto;padding:20px;display:grid;grid-template-colu
 .code{font-size:1.15rem;border-bottom:1px solid #333;padding:2px 4px;margin-bottom:12px;min-height:1.8em;letter-spacing:.04em}
 .frame{position:relative;width:100%;aspect-ratio:3/4;border:4px solid #000;overflow:hidden;background:#eee}
 .frame video,.frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.frame video{transform:scaleX(-1)}
+
 .rule{position:absolute;left:0;right:0;border-top:3px solid #000;z-index:2;text-align:right;font:italic 700 13px sans-serif;pointer-events:none}
 .rule span{padding-right:6px}
 .btns{display:flex;flex-direction:column;gap:8px;margin-top:12px}
@@ -27,19 +27,41 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 label{display:block;font-size:.85rem;margin-top:8px}
 input[type=text],input[type=number],input[type=date],select{width:100%;font:inherit;padding:6px;border:0;border-bottom:1px solid #333;background:#fafafa}
 .row{display:grid;grid-template-columns:110px 1fr;gap:8px}
-#fp{position:relative;height:340px;border:1px solid #999;background:#fff;overflow:hidden;cursor:pointer}
-#fp canvas{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);height:92%}
-#fp p{position:relative;z-index:2;margin:0;padding:10px;text-align:center}
-#fp.scan::after{content:"";position:absolute;left:0;right:0;height:5px;background:#1b9520;box-shadow:0 0 12px #1b9520;animation:s 1s linear infinite}
-@keyframes s{from{top:0}to{top:100%}}
+#fpwrap{display:none;gap:8px;justify-content:center;margin:8px 0}
+#fpwrap canvas{width:47%;border:1px solid #999;background:#fff}
+#fpv{display:none;width:60%;margin:8px auto;border:1px solid #999;background:#fff}
+#st{font-weight:600;margin:10px 0;text-align:center}
+#qr{display:flex;justify-content:center;margin:8px 0}
+#plink{word-break:break-all;font-size:.75rem}
+#phone{display:none;min-height:calc(100vh - 62px);padding:20px;text-align:center;background:#f4faf4}
+#phone h2{margin:.4em 0}
+#pad{position:relative;width:240px;height:240px;margin:24px auto;border-radius:50%;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+ background:conic-gradient(#1b9520 var(--p,0deg),#cfe3cf 0);display:flex;align-items:center;justify-content:center}
+#pad i{width:212px;height:212px;border-radius:50%;background:repeating-radial-gradient(circle at 50% 60%,#fff 0 4px,#e3f1e3 4px 9px);border:3px solid #fff;display:block}
+#sigc{width:100%;max-width:520px;height:auto;aspect-ratio:7/3;background:#fff;border:2px solid #000;touch-action:none}
+.hide{display:none!important}
 #result{display:none;max-width:1100px;margin:0 auto;padding:20px;text-align:center}
 #result canvas{width:min(100%,640px);height:auto;border-radius:14px;box-shadow:0 3px 14px #0004;margin:8px}
-#msg{color:#b00;min-height:1.4em;text-align:center;margin-top:8px}
+#msg,#pmsg{color:#b00;min-height:1.4em;text-align:center;margin-top:8px}
 small{color:#666}
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
-<header>ศูนย์ออกบัตรประจำตัว — Game National Card</header>
+<header id="hd">ศูนย์ออกบัตรประจำตัว — Game National Card</header>
+<div id="phone">
+  <div id="pcode" class="hide"><h2>ใส่รหัสสถานี</h2><input type="text" id="pcin" inputmode="numeric" style="max-width:220px;text-align:center;font-size:1.6rem"><div class="btns" style="max-width:220px;margin:12px auto"><button class="primary" id="pcgo">เชื่อมต่อ</button></div></div>
+  <div id="pmain">
+    <div id="pv-idle"><h2>เชื่อมต่อแล้ว ✓</h2><p>รอเจ้าหน้าที่เริ่มขั้นตอน…</p><p><small>สถานี <b id="pcn"></b></small></p></div>
+    <div id="pv-fp" class="hide"><h2 id="pfph">สแกนนิ้วมือข้างขวา (1/2)</h2><p>วางนิ้วบนวงกลมแล้วกดค้างไว้ 3 วินาที</p><div id="pad"><i></i></div><p id="pfpt"></p></div>
+    <div id="pv-wait" class="hide"><h2>ส่งลายนิ้วมือแล้ว ✓</h2><p>รอเจ้าหน้าที่ตรวจสอบบนคอมพิวเตอร์…</p><canvas id="pfp" width="620" height="360" style="width:270px;background:#fff;border:1px solid #999"></canvas></div>
+    <div id="pv-sign" class="hide"><h2>เจ้าพนักงานเซ็นลายเซ็น</h2><canvas id="sigc" width="700" height="300"></canvas>
+      <div class="btns" style="max-width:360px;margin:12px auto"><button id="sigclr">ล้างลายเซ็น</button><button class="primary" id="sigok">ยืนยันลายเซ็น</button></div><div id="pmsg"></div></div>
+    <div id="pv-done" class="hide"><h2>เสร็จเรียบร้อย ✓</h2><p>บัตรกำลังแสดงบนคอมพิวเตอร์</p></div>
+  </div>
+</div>
 
 <div id="app">
 <main>
@@ -73,14 +95,20 @@ small{color:#666}
     <div class="btns">
       <button id="snap" class="primary">ถ่ายภาพ</button>
       <button id="retake">ถ่ายอีกครั้ง</button>
+      <button id="flip">Flip กล้อง (กลับซ้าย-ขวา)</button>
       <label class="btn" style="margin:0;font-size:1rem">อัพโหลดแทน<input type="file" id="file" accept="image/*" hidden></label>
       <button id="cancel">ยกเลิก</button>
     </div>
   </section>
 
-  <section class="box">
-    <div id="fp" tabindex="0"><p id="fptxt">กด Space Bar เพื่อพิมพ์ลายนิ้วมือ<br><small>(บนมือถือให้แตะกล่องนี้)</small></p><canvas id="fpc" width="300" height="360"></canvas></div>
-    <div class="btns"><button id="issue" class="primary">ออกบัตร</button></div>
+  <section class="box" id="flow">
+    <label style="margin-top:0">รหัสสถานี (ใช้ตรงกับโทรศัพท์)<input type="text" id="code" inputmode="numeric"></label>
+    <div id="pconn" style="text-align:center;font-size:.9rem;margin:6px 0">โทรศัพท์: ยังไม่เชื่อมต่อ</div>
+    <button id="pair" style="width:100%">เชื่อมโทรศัพท์</button>
+    <div id="pairbox" class="hide" style="text-align:center"><div id="qr"></div><div id="plink"></div><small>สแกน QR ด้วยโทรศัพท์ หรือเปิดลิงก์นี้บนโทรศัพท์</small></div>
+    <div id="st">กำลังเชื่อมต่อ…</div>
+    <div id="fpwrap"><canvas id="fpv1" width="300" height="360"></canvas><canvas id="fpv2" width="300" height="360"></canvas></div>
+    <div class="btns" id="fbtns"></div>
     <div id="msg"></div>
   </section>
 </main>
@@ -101,7 +129,7 @@ small{color:#666}
 <script>
 const LOGO="data:image/png;base64,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";
 const $=id=>document.getElementById(id);
-let photo=null,fpCanvas=null,stream=null,idRaw='',laser='';
+let photo=null,fpCanvas=null,stream=null,idRaw='',laser='',mirror=false,issued=false,ref=null,code='';
 
 /* ---------- height chart ---------- */
 [170,160,150,140,130,120,110,100].forEach((m,i)=>{const d=document.createElement('div');d.className='rule';d.style.top=(6+i*12.2)+'%';d.innerHTML='<span>'+m+'</span>';$('frame').appendChild(d)});
@@ -130,32 +158,35 @@ $('snap').onclick=()=>{
   const v=$('cam');if(!v.videoWidth){$('msg').textContent='กล้องยังไม่พร้อม';return}
   const w=v.videoWidth,h=v.videoHeight,tw=Math.min(w,h*.75),th=tw/.75;
   const c=document.createElement('canvas');c.width=600;c.height=800;
-  const x=c.getContext('2d');x.translate(600,0);x.scale(-1,1);
+  const x=c.getContext('2d');if(mirror){x.translate(600,0);x.scale(-1,1)}
   x.drawImage(v,(w-tw)/2,(h-th)/2,tw,th,0,0,600,800);
   setPhoto(c.toDataURL('image/jpeg',.92));
 };
 function setPhoto(u){photo=u;$('shot').src=u;$('shot').style.display='block';$('cam').style.display='none';$('msg').textContent=''}
 $('retake').onclick=showLive;
+$('flip').onclick=()=>{mirror=!mirror;$('cam').style.transform=mirror?'scaleX(-1)':'none'};
 $('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>setPhoto(r.result);r.readAsDataURL(f)};
 $('cancel').onclick=resetAll;
 function resetAll(){
   document.querySelectorAll('input[type=text],input[type=number],input[type=date]').forEach(i=>i.value='');
-  $('agev').textContent='';fpCanvas=null;$('fpc').getContext('2d').clearRect(0,0,300,360);$('fptxt').style.display='block';
+  $('agev').textContent='';fpCanvas=null;issued=false;if(ref)ref.update({state:'idle',fpSeed:null,fpSeed2:null,sig:null});
   newNumbers();showLive();$('msg').textContent='';
   $('result').style.display='none';$('app').style.display='block';
 }
 $('dob').onchange=()=>{const d=new Date($('dob').value);if(isNaN(d))return;const n=new Date();let a=n.getFullYear()-d.getFullYear();if(n<new Date(n.getFullYear(),d.getMonth(),d.getDate()))a--;$('agev').textContent='อายุ '+a+' ปี'};
 
 /* ---------- realistic fingerprint (ridge phase field with minutiae) ---------- */
-function makeFP(){
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function makeFP(seed){
+  const R=rng(seed);
   const W=300,H=360,c=document.createElement('canvas');c.width=W;c.height=H;
   const g=c.getContext('2d'),img=g.createImageData(W,H),d=img.data;
-  const cx=W/2+(Math.random()*30-15),cy=H*.52+(Math.random()*30-15);
-  const rot=(Math.random()-.5)*.6,cs=Math.cos(rot),sn=Math.sin(rot);
-  const whorl=Math.random()<.45,k=.66+Math.random()*.08;
-  const dis=[];for(let i=0;i<16;i++){const a=Math.random()*6.283,r=Math.random()*115;dis.push({x:cx+Math.cos(a)*r*.85,y:cy+Math.sin(a)*r*1.1,s:i%2?1:-1})}
-  const nz=[...Array(5)].map(()=>({fx:(Math.random()-.5)*.05,fy:(Math.random()-.5)*.05,p:Math.random()*6.28,a:.5+Math.random()*1.1}));
-  const seed=[...Array(6)].map(()=>Math.random()*6.28);
+  const cx=W/2+(R()*30-15),cy=H*.52+(R()*30-15);
+  const rot=(R()-.5)*.6,cs=Math.cos(rot),sn=Math.sin(rot);
+  const whorl=R()<.45,k=.66+R()*.08;
+  const dis=[];for(let i=0;i<16;i++){const a=R()*6.283,r=R()*115;dis.push({x:cx+Math.cos(a)*r*.85,y:cy+Math.sin(a)*r*1.1,s:i%2?1:-1})}
+  const nz=[...Array(5)].map(()=>({fx:(R()-.5)*.05,fy:(R()-.5)*.05,p:R()*6.28,a:.5+R()*1.1}));
+  const sd=[...Array(6)].map(()=>R()*6.28);
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
     let dx=x-cx,dy=y-cy;const px=dx*cs-dy*sn,py=dx*sn+dy*cs;
     const base=whorl?Math.hypot(px*1.0,py*.88):Math.hypot(px*.82,py<0?py*.72:py*1.55);
@@ -166,27 +197,15 @@ function makeFP(){
     let ridge=Math.max(0,Math.min(1,(v+.15)*2.2));
     const ex=(x-W/2)/(W*.44),ey=(y-H/2)/(H*.47);
     let m=1-Math.pow(ex*ex+ey*ey,3.2);
-    m+=.18*Math.sin(x*.09+seed[0])*Math.sin(y*.07+seed[1])+(Math.random()-.5)*.35;
+    m+=.18*Math.sin(x*.09+sd[0])*Math.sin(y*.07+sd[1])+(R()-.5)*.35;
     m=Math.max(0,Math.min(1,m*1.4));
-    const grain=Math.random()>.93?.35:1;
-    const a=ridge*m*grain*(.8+.2*Math.random());
+    const grain=R()>.93?.35:1;
+    const a=ridge*m*grain*(.8+.2*R());
     const i=(y*W+x)*4;d[i]=18;d[i+1]=22;d[i+2]=40;d[i+3]=Math.round(a*255);
   }
   g.putImageData(img,0,0);return c;
 }
-function scanFP(){
-  const box=$('fp');if(box.classList.contains('scan'))return;
-  box.classList.add('scan');$('fptxt').innerHTML='กำลังสแกน...';
-  setTimeout(()=>{
-    box.classList.remove('scan');fpCanvas=makeFP();
-    const c=$('fpc'),x=c.getContext('2d');x.clearRect(0,0,300,360);x.drawImage(fpCanvas,0,0);
-    $('fptxt').innerHTML='<small>สแกนสำเร็จ ✓ (กดอีกครั้งเพื่อสแกนใหม่)</small>';
-  },1300);
-}
-document.addEventListener('keydown',e=>{
-  if(e.code==='Space'&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName)){e.preventDefault();scanFP()}
-});
-$('fp').onclick=scanFP;
+
 
 /* ---------- Code 128-B barcode ---------- */
 const C128="212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112".split(' ');
@@ -277,7 +296,7 @@ async function drawFront(c,d){
   T(g,`${thDate(d.issue)}   ${enDate(d.issue)}`,36,580,22,600,ink,'left',330);
   T(g,'วันบัตรหมดอายุ  Date of Expiry',36,606,14,400,lab);
   T(g,`${thDate(d.exp)}   ${enDate(d.exp)}`,36,630,20,600,ink,'left',330);
-  sign(g,470,568,d.off||'x');
+  if(d.sigImg){const s=Math.min(240/d.sigImg.width,64/d.sigImg.height,1.6);g.drawImage(d.sigImg,560-d.sigImg.width*s/2,590-16-d.sigImg.height*s,d.sigImg.width*s,d.sigImg.height*s)}else sign(g,470,568,d.off||'x');
   T(g,d.off?`( ${d.off} )`:'',560,600,18,400,ink,'center',260);
   T(g,'เจ้าพนักงานออกบัตร',560,624,14,400,lab,'center');
   const ph=await load(photo);
@@ -296,9 +315,8 @@ async function drawBack(c,d){
   if(logo){const s=62/Math.max(logo.width,logo.height);g.drawImage(logo,28,12,logo.width*s,logo.height*s)}
   T(g,'Game National Card',110,52,30,600,'#fff');
   T(g,'บัตรจำลองเพื่อการเรียนรู้',983,52,20,400,'#ffd57a','right');
-  T(g,'ลายพิมพ์นิ้วมือ  Fingerprint',60,132,15,400,lab);
-  g.fillStyle='#fff';rrect(g,50,144,230,290,10);g.fill();g.strokeStyle='rgba(30,60,110,.4)';g.lineWidth=1.5;g.stroke();
-  if(fpCanvas)g.drawImage(fpCanvas,58,150,214,257*1.0*1.0);
+  T(g,'ลายพิมพ์นิ้วมือ  Fingerprint',40,132,15,400,lab);
+  [['ขวา  Right',36],['ซ้าย  Left',168]].forEach(([n,x],i)=>{g.fillStyle='#fff';rrect(g,x,144,128,170,8);g.fill();g.strokeStyle='rgba(30,60,110,.4)';g.lineWidth=1.5;g.stroke();if(fpCanvas&&fpCanvas[i])g.drawImage(fpCanvas[i],x+6,150,116,139);T(g,n,x+64,338,14,400,lab,'center')});
   T(g,'Laser Code',330,150,16,400,lab);
   T(g,laser,330,206,58,600,ink,'left',620);
   T(g,'เลขประจำตัวประชาชน  Identification Number',330,262,15,400,lab);
@@ -314,22 +332,148 @@ function collect(){
   return{pre:$('pre').value,fn:$('fn').value.trim(),ln:$('ln').value.trim(),fne:$('fne').value.trim(),lne:$('lne').value.trim(),
     dobD,issue,exp,rel:$('rel').value,addr:$('addr').value.trim(),job:$('job').value.trim(),inc:$('inc').value,off:$('off').value.trim()};
 }
-$('issue').onclick=async()=>{
-  const m=$('msg');
-  if(!$('fn').value.trim()||!$('ln').value.trim()){m.textContent='กรุณากรอกชื่อและนามสกุล';return}
-  if(!$('dob').value){m.textContent='กรุณาเลือกวันเกิด';return}
-  if(!photo){m.textContent='กรุณาถ่ายภาพหรืออัพโหลดรูปก่อน';return}
-  if(!fpCanvas){m.textContent='กรุณากด Space Bar เพื่อพิมพ์ลายนิ้วมือ';return}
+function validate(){
+  const m=$('msg');m.textContent='';
+  if(!$('fn').value.trim()||!$('ln').value.trim()){m.textContent='กรุณากรอกชื่อและนามสกุล';return false}
+  if(!$('dob').value){m.textContent='กรุณาเลือกวันเกิด';return false}
+  if(!photo){m.textContent='กรุณาถ่ายภาพหรืออัพโหลดรูปก่อน';return false}
+  return true;
+}
+async function finish(v){
+  if(issued)return;
+  if(!$('fn').value.trim()||!photo||!v.fpSeed||!v.fpSeed2){ref.update({state:'idle',fpSeed:null,fpSeed2:null,sig:null});return}
+  issued=true;
   await Promise.all([document.fonts.load('400 20px "Noto Sans Thai"'),document.fonts.load('600 20px "Noto Sans Thai"')]);
-  const d=collect();
+  fpCanvas=[makeFP(v.fpSeed),makeFP(v.fpSeed2)];
+  const d=collect();d.sigImg=await load(v.sig);
   await drawFront($('front'),d);await drawBack($('back'),d);
   $('app').style.display='none';$('result').style.display='block';scrollTo(0,0);
-};
+}
 const save=(cv,name)=>{const a=document.createElement('a');a.download=name;a.href=cv.toDataURL('image/png');a.click()};
 $('dlF').onclick=()=>save($('front'),'game-national-card-front.png');
 $('dlB').onclick=()=>save($('back'),'game-national-card-back.png');
 $('dlA').onclick=()=>{const c=document.createElement('canvas');c.width=2022;c.height=2600;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,2022,2600);g.drawImage($('front'),0,0);g.drawImage($('back'),0,1324);save(c,'game-national-card.png')};
 $('again').onclick=resetAll;
+
+/* ---------- Firebase ---------- */
+const firebaseConfig={
+  apiKey:"AIzaSyD8cZVvAvmUmpXIsWvcx6bwfZy_L7p4f3M",
+  authDomain:"registered-4b7de.firebaseapp.com",
+  databaseURL:"https://registered-4b7de-default-rtdb.firebaseio.com",
+  projectId:"registered-4b7de",
+  storageBucket:"registered-4b7de.firebasestorage.app",
+  messagingSenderId:"342078506670",
+  appId:"1:342078506670:web:bd12e8b10475677668cf3f"
+};
+let db=null;
+try{firebase.initializeApp(firebaseConfig);db=firebase.database()}catch(e){console.error(e)}
+const params=new URLSearchParams(location.search);
+const isPhone=params.get('mode')==='phone';
+const setSt=t=>{$('st').textContent=t};
+function setBtns(list){const b=$('fbtns');b.innerHTML='';list.forEach(([t,fn,p])=>{const x=document.createElement('button');x.textContent=t;if(p)x.className='primary';x.onclick=fn;b.appendChild(x)})}
+function phoneUrl(){return location.origin+location.pathname+'?mode=phone&code='+encodeURIComponent(code)}
+
+/* ===== Computer (officer) ===== */
+function cancelFlow(){ref.update({state:'idle',fpSeed:null,fpSeed2:null,sig:null})}
+let phoneOn=false;
+function startFlow(){if(!validate())return;if(!phoneOn){$('msg').textContent='กรุณากด "เชื่อมโทรศัพท์" ก่อน';return}ref.update({state:'await_fp',ts:Date.now(),fpSeed:null,fpSeed2:null,sig:null})}
+function onState(v){
+  const s=v.state||'idle';
+  phoneOn=!!v.phone;
+  $('pconn').textContent=phoneOn?'โทรศัพท์: เชื่อมต่อแล้ว ✓':'โทรศัพท์: ยังไม่เชื่อมต่อ';
+  if(phoneOn)$('pairbox').classList.add('hide');
+  $('fpwrap').style.display=s==='fp_review'?'flex':'none';
+  if(s==='idle'){setSt('พร้อมส่งให้ผู้ใช้บริการสแกนลายนิ้วมือ');setBtns([['ส่งไปสแกนลายนิ้วมือ',startFlow,1]])}
+  else if(s==='await_fp'){setSt('รอผู้ใช้บริการสแกนลายนิ้วมือที่โทรศัพท์…');setBtns([['ยกเลิก',cancelFlow]])}
+  else if(s==='fp_review'){
+    [[ 'fpv1',v.fpSeed],['fpv2',v.fpSeed2]].forEach(([id,sd])=>{const c=$(id).getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,300,360);c.drawImage(makeFP(sd),0,0)});
+    setSt('ได้รับลายนิ้วมือ 2 ข้างแล้ว เลือกดำเนินการ');
+    setBtns([['ลองใหม่',()=>ref.update({state:'await_fp',fpSeed:null,fpSeed2:null})],['ยกเลิก',cancelFlow],['ถัดไป',()=>ref.update({state:'await_sign'}),1]]);
+  }
+  else if(s==='await_sign'){setSt('รอเจ้าพนักงานเซ็นลายเซ็นที่โทรศัพท์…');setBtns([['ยกเลิก',cancelFlow]])}
+  else if(s==='sign_done'){setSt('ได้รับลายเซ็นแล้ว กำลังออกบัตร…');setBtns([]);finish(v)}
+}
+function makeQR(){
+  $('qr').innerHTML='';$('plink').textContent=phoneUrl();
+  try{new QRCode($('qr'),{text:phoneUrl(),width:150,height:150})}catch(e){}
+}
+function listen(){
+  if(ref)ref.off();
+  code=($('code').value.trim()||'1234');$('code').value=code;localStorage.setItem('stationCode',code);
+  ref=db.ref('stations/'+code);
+  ref.on('value',s=>onState(s.val()||{state:'idle'}),e=>{setSt('เชื่อมต่อฐานข้อมูลไม่ได้ (ตรวจสอบ Rules ใน Firebase)')});
+  makeQR();
+}
+
+/* ===== Phone ===== */
+function phoneShow(id){['idle','fp','wait','sign','done'].forEach(k=>$('pv-'+k).classList.toggle('hide',k!==id))}
+let pstate='idle',hold=0,raf=0,penDown=false,sigBox=null;
+function phoneListen(){
+  if(ref)ref.off();
+  $('pcode').classList.add('hide');$('pmain').classList.remove('hide');$('pcn').textContent=code;
+  ref=db.ref('stations/'+code);
+  const pr=ref.child('phone');
+  db.ref('.info/connected').on('value',s=>{if(s.val()){pr.onDisconnect().remove();pr.set({ts:Date.now()})}});
+  ref.on('value',s=>{
+    const v=s.val()||{state:'idle'};const prev=pstate;pstate=v.state||'idle';
+    if(pstate==='idle')phoneShow('idle');
+    else if(pstate==='await_fp'){phoneShow('fp');resetRing();if(prev!=='await_fp'){scanN=0;$('pfph').textContent='สแกนนิ้วมือข้างขวา (1/2)';$('pfpt').textContent=''}}
+    else if(pstate==='fp_review'){phoneShow('wait');const c=$('pfp').getContext('2d');c.fillStyle='#fff';c.fillRect(0,0,620,360);c.drawImage(makeFP(v.fpSeed),0,0);c.drawImage(makeFP(v.fpSeed2),320,0)}
+    else if(pstate==='await_sign'){phoneShow('sign');if(prev!=='await_sign')clearSig()}
+    else if(pstate==='sign_done')phoneShow('done');
+  });
+}
+function resetRing(){cancelAnimationFrame(raf);$('pad').style.setProperty('--p','0deg')}
+function tick(){
+  const p=Math.min(1,(performance.now()-hold)/3000);
+  $('pad').style.setProperty('--p',(p*360)+'deg');
+  if(p>=1){finishFP();return}
+  raf=requestAnimationFrame(tick);
+}
+let scanN=0,seedA=0;
+function finishFP(){
+  resetRing();if(navigator.vibrate)navigator.vibrate(80);
+  const s=Math.floor(Math.random()*4e9);
+  if(scanN===0){seedA=s;scanN=1;$('pfph').textContent='สแกนนิ้วมือข้างซ้าย (2/2)';$('pfpt').textContent='ข้างขวาสำเร็จ ✓ ต่อไปข้างซ้าย'}
+  else{scanN=0;ref.update({state:'fp_review',fpSeed:seedA,fpSeed2:s})}
+}
+function initPhone(){
+  document.title='สแกนลายนิ้วมือ / เซ็นชื่อ';
+  $('hd').textContent='โทรศัพท์ผู้ใช้บริการ — Game National Card';
+  $('app').style.display='none';$('phone').style.display='block';
+  const pad=$('pad');
+  pad.addEventListener('contextmenu',e=>e.preventDefault());
+  pad.addEventListener('pointerdown',e=>{e.preventDefault();if(pstate!=='await_fp')return;$('pfpt').textContent='กำลังสแกน… อย่าเพิ่งยกนิ้ว';hold=performance.now();cancelAnimationFrame(raf);tick()});
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>pad.addEventListener(ev,()=>{if(pstate==='await_fp'){resetRing();$('pfpt').textContent='กดค้างให้ครบ 3 วินาที'}}));
+  // signature
+  const sc=$('sigc'),g=sc.getContext('2d');
+  g.lineWidth=4;g.lineCap='round';g.lineJoin='round';g.strokeStyle='#1a2a6c';
+  const pos=e=>{const r=sc.getBoundingClientRect();return{x:(e.clientX-r.left)*sc.width/r.width,y:(e.clientY-r.top)*sc.height/r.height}};
+  sc.addEventListener('pointerdown',e=>{e.preventDefault();sc.setPointerCapture(e.pointerId);penDown=true;const p=pos(e);g.beginPath();g.moveTo(p.x,p.y);g.lineTo(p.x+.1,p.y+.1);g.stroke();grow(p)});
+  sc.addEventListener('pointermove',e=>{if(!penDown)return;e.preventDefault();const p=pos(e);g.lineTo(p.x,p.y);g.stroke();g.beginPath();g.moveTo(p.x,p.y);grow(p)});
+  ['pointerup','pointercancel'].forEach(ev=>sc.addEventListener(ev,()=>{penDown=false}));
+  $('sigclr').onclick=clearSig;
+  $('sigok').onclick=()=>{
+    if(!sigBox){$('pmsg').textContent='กรุณาเซ็นลายเซ็นก่อน';return}
+    const pd=10,x=Math.max(0,sigBox.x0-pd),y=Math.max(0,sigBox.y0-pd),w=Math.min(sc.width-x,sigBox.x1-sigBox.x0+2*pd),h=Math.min(sc.height-y,sigBox.y1-sigBox.y0+2*pd);
+    const o=document.createElement('canvas');o.width=w;o.height=h;o.getContext('2d').drawImage(sc,x,y,w,h,0,0,w,h);
+    ref.update({state:'sign_done',sig:o.toDataURL('image/png')});
+  };
+  function grow(p){sigBox=sigBox?{x0:Math.min(sigBox.x0,p.x),y0:Math.min(sigBox.y0,p.y),x1:Math.max(sigBox.x1,p.x),y1:Math.max(sigBox.y1,p.y)}:{x0:p.x,y0:p.y,x1:p.x,y1:p.y};$('pmsg').textContent=''}
+  window.clearSig=function(){g.clearRect(0,0,sc.width,sc.height);sigBox=null;$('pmsg').textContent=''};
+  code=params.get('code')||localStorage.getItem('phoneCode')||'';
+  if(!code){$('pmain').classList.add('hide');$('pcode').classList.remove('hide');$('pcgo').onclick=()=>{code=$('pcin').value.trim();if(code){localStorage.setItem('phoneCode',code);phoneListen()}}}
+  else{localStorage.setItem('phoneCode',code);phoneListen()}
+}
+
+/* ===== boot ===== */
+if(!db){document.body.insertAdjacentHTML('afterbegin','<p style="color:#b00;padding:10px">โหลด Firebase ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต</p>')}
+else if(isPhone){initPhone()}
+else{
+  $('code').value=params.get('code')||localStorage.getItem('stationCode')||String(1000+Math.floor(Math.random()*9000));
+  $('code').onchange=listen;listen();
+  $('pair').onclick=()=>{$('pairbox').classList.toggle('hide');makeQR()};
+}
 </script>
 </body>
 </html>
