@@ -113,7 +113,7 @@ small,.muted{color:#666}
     <div id="qr"></div><div id="plink"></div>
     <p class="muted"><small>เปิดลิงก์/QR นี้บนโทรศัพท์ หน้าโทรศัพท์จะมีแค่ปุ่มสแกนลายนิ้วมือ</small></p>
     <div class="err" id="pe"></div>
-    <div class="btns"><button id="pback">ย้อนกลับ / ใช้เครื่องนี้แทน</button></div>
+    <div class="btns"><button id="retryConn" class="primary hide">ลองเชื่อมต่อใหม่</button><button id="pback">ย้อนกลับ / ใช้เครื่องนี้แทน</button></div>
   </div>
   <div id="fp-review" class="hide center">
     <h3>ตรวจสอบลายนิ้วมือ</h3>
@@ -140,8 +140,9 @@ small,.muted{color:#666}
     <button id="dlF" class="primary">ดาวน์โหลดด้านหน้า</button>
     <button id="dlB" class="primary">ดาวน์โหลดด้านหลัง</button>
     <button id="dlA">ดาวน์โหลดทั้งสองด้าน (ภาพเดียว)</button>
-    <button id="again">ออกบัตรใบใหม่</button>
+    <button id="again">ออกบัตรใบใหม่ (รีเฟรชหน้า)</button>
   </div>
+  <p id="cd" class="muted"></p>
 </section>
 
 <!-- phone mode -->
@@ -364,7 +365,7 @@ $('snap').onclick=()=>{
 $('retake').onclick=showLive;
 $('flip').onclick=()=>{mirror=!mirror;$('cam').style.transform=mirror?'scaleX(-1)':'none'};
 $('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>setPhoto(r.result);r.readAsDataURL(f)};
-$('c1').onclick=resetAll;
+$('c1').onclick=hardReset;
 $('n1').onclick=()=>{if(!photo){$('e1').textContent='กรุณาถ่ายภาพหรืออัพโหลดรูปก่อน';return}show(2)};
 
 /* ================= step 2 form ================= */
@@ -411,7 +412,7 @@ $('rRetry').onclick=()=>{
   if(fpMode==='phone'){fpView('phone');$('pst').textContent='รอโทรศัพท์สแกนใหม่…';if(ref)ref.update({state:'await_fp',fpSeed:null,fpSeed2:null})}
   else{localReset();fpView('local')}
 };
-$('rCancel').onclick=resetAll;
+$('rCancel').onclick=hardReset;
 $('rNext').onclick=()=>{if(fpMode==='phone'&&ref)ref.update({state:'done'});stopPhone();sigClear();show(4)};
 
 /* ---------- lazy Firebase (โหลดเมื่อเลือกใช้โทรศัพท์เท่านั้น) ---------- */
@@ -425,27 +426,67 @@ const firebaseConfig={
   appId:"1:342078506670:web:bd12e8b10475677668cf3f"
 };
 let db=null,ref=null,code='';
-const loadScript=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('โหลดไม่ได้: '+src.split('/').pop()));document.head.appendChild(s)});
+const loadScript=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>{s.remove();rej(new Error('โหลดไม่ได้: '+src.split('/').pop()))};document.head.appendChild(s)});
 const withTimeout=(p,ms,msg)=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error(msg)),ms))]);
-async function initFirebase(){
+async function retry(fn,n,cb){
+  for(let i=1;i<=n;i++){
+    try{if(cb)cb(i,n);return await fn()}
+    catch(e){if(i===n)throw e;await new Promise(r=>setTimeout(r,Math.min(1200*i,5000)))}
+  }
+}
+const SDK='https://www.gstatic.com/firebasejs/10.12.2/';
+async function initFirebase(cb){
   if(db)return db;
-  await withTimeout(Promise.all([
-    loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js').then(()=>loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js'))
-  ]),15000,'อินเทอร์เน็ตช้าหรือเชื่อมต่อ Firebase ไม่ได้');
-  firebase.initializeApp(firebaseConfig);db=firebase.database();return db;
+  await retry(async()=>{
+    if(typeof firebase==='undefined')await withTimeout(loadScript(SDK+'firebase-app-compat.js'),12000,'โหลด Firebase ช้า');
+    if(!firebase.database)await withTimeout(loadScript(SDK+'firebase-database-compat.js'),12000,'โหลด Firebase ช้า');
+    if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);
+    db=firebase.database();
+  },5,cb);
+  return db;
+}
+/* ตรวจสอบการเชื่อมต่อต่อเนื่อง: หลุดแล้วต่อใหม่เอง (โทรศัพท์รีเฟรชหน้าเองถ้าหลุดนาน) */
+let online=true,offSince=0,wd=null,connH=null,tk=0;
+function safeReload(){const n=+sessionStorage.getItem('rl')||0;if(n>=3)return;sessionStorage.setItem('rl',n+1);location.reload()}
+function stopWatchdog(){clearInterval(wd);if(db&&connH)db.ref('.info/connected').off('value',connH);connH=null}
+function startWatchdog(msg,allowReload){
+  stopWatchdog();online=true;offSince=0;
+  connH=s=>{online=!!s.val();if(online){offSince=0;sessionStorage.removeItem('rl');msg('')}else if(!offSince)offSince=Date.now()};
+  db.ref('.info/connected').on('value',connH);
+  wd=setInterval(()=>{
+    if(online||!offSince)return;
+    const off=Math.round((Date.now()-offSince)/1000);
+    msg('การเชื่อมต่อหลุด กำลังเชื่อมต่อใหม่อัตโนมัติ… ('+off+' วิ)');
+    if(off>=6&&tk++%2===0){try{db.goOffline();db.goOnline()}catch(e){}}
+    if(allowReload&&off>=40)safeReload();
+  },3000);
 }
 const RULES='ตั้ง Rules ใน Firebase: {"rules":{"stations":{"$c":{".read":true,".write":true}}}} แล้วกด Publish';
 function phoneUrl(){return location.origin+location.pathname+'?mode=phone&code='+encodeURIComponent(code)}
-function stopPhone(){if(ref){try{ref.off()}catch(e){}}ref=null}
+function stopPhone(){connToken++;stopWatchdog();if(ref){try{ref.off()}catch(e){}}ref=null}
+let connToken=0;
+async function hardReset(){
+  try{if(db&&code)await withTimeout(db.ref('stations/'+code).update({state:'idle',fpSeed:null,fpSeed2:null}),1500,'t')}catch(e){}
+  location.reload();
+}
+function stationIdle(){try{if(db&&code)db.ref('stations/'+code).update({state:'idle',fpSeed:null,fpSeed2:null}).catch(()=>{})}catch(e){}}
 
-$('fpPhoneBtn').onclick=async()=>{
-  fpMode='phone';fpView('phone');$('pe').textContent='';$('qr').innerHTML='';$('plink').textContent='';
-  $('pst').textContent='กำลังเชื่อมต่อฐานข้อมูล…';
+async function connectPhone(){
+  fpMode='phone';fpView('phone');const my=++connToken;
+  $('pe').textContent='';$('qr').innerHTML='';$('plink').textContent='';$('retryConn').classList.add('hide');
   code=localStorage.getItem('stationCode')||String(1000+Math.floor(Math.random()*9000));localStorage.setItem('stationCode',code);
-  try{await initFirebase()}catch(e){$('pst').textContent='เชื่อมต่อไม่ได้';$('pe').textContent=e.message+' — ใช้ "สแกนบนเครื่องนี้" แทนได้';return}
-  ref=db.ref('stations/'+code);
-  try{await withTimeout(ref.set({state:'idle',ts:Date.now()}),8000,'เขียนฐานข้อมูลไม่ได้ (ช้าเกิน 8 วินาที) '+RULES)}
-  catch(e){$('pst').textContent='เชื่อมต่อไม่ได้';$('pe').textContent=(e.code||e.message)+' — '+RULES;return}
+  const cb=(i,n)=>{if(my===connToken)$('pst').textContent='กำลังเชื่อมต่อฐานข้อมูล… (ครั้งที่ '+i+'/'+n+')'};
+  try{
+    await initFirebase(cb);if(my!==connToken)return;
+    ref=db.ref('stations/'+code);
+    await retry(()=>withTimeout(ref.update({state:'idle',fpSeed:null,fpSeed2:null,ts:Date.now()}),8000,'เขียนฐานข้อมูลไม่ได้'),5,cb);
+  }catch(e){
+    if(my!==connToken)return;
+    $('pst').textContent='เชื่อมต่อไม่สำเร็จหลังลอง 5 ครั้ง';$('pe').textContent=(e.code||e.message)+' — '+RULES;
+    $('retryConn').classList.remove('hide');return;
+  }
+  if(my!==connToken)return;
+  startWatchdog(m=>{if(fpMode==='phone')$('pe').textContent=m},false);
   $('pst').textContent='รอโทรศัพท์เชื่อมต่อ… (สแกน QR หรือเปิดลิงก์ด้านล่างบนโทรศัพท์)';
   $('plink').innerHTML=location.protocol==='file:'?'<b style="color:#b00">เปิดจากไฟล์ในเครื่อง โทรศัพท์เข้าไม่ได้ ต้องเปิดผ่าน GitHub Pages (https)</b>':'<a href="'+phoneUrl()+'" target="_blank">'+phoneUrl()+'</a> <small>(รหัสสถานี '+code+')</small>';
   loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js').then(()=>{$('qr').innerHTML='';new QRCode($('qr'),{text:phoneUrl(),width:160,height:160})}).catch(()=>{});
@@ -456,8 +497,10 @@ $('fpPhoneBtn').onclick=async()=>{
       if(v.state==='idle')ref.update({state:'await_fp'})}
     else $('pst').textContent='รอโทรศัพท์เชื่อมต่อ…';
   },e=>{$('pe').textContent=(e.code||e.message)+' — '+RULES});
-};
-$('pback').onclick=()=>{stopPhone();fpView('choose')};
+}
+$('fpPhoneBtn').onclick=connectPhone;
+$('retryConn').onclick=connectPhone;
+$('pback').onclick=()=>{stationIdle();stopPhone();fpView('choose')};
 
 /* ================= step 4 signature ================= */
 const sc=$('sigc'),sg=sc.getContext('2d');let sbox=null,pen=false;
@@ -483,13 +526,15 @@ async function finish(){
   fpCanvas=[makeFP(seeds[0]),makeFP(seeds[1])];
   const d=collect();d.sigImg=sigData?await load(sigData):null;
   await drawFront($('front'),d);await drawBack($('back'),d);
-  show(5);
+  show(5);stationIdle();
+  let left=300;clearInterval(window._cd);
+  window._cd=setInterval(()=>{left--;$('cd').textContent='หน้านี้จะรีเฟรชอัตโนมัติใน '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0')+' (ดาวน์โหลดบัตรก่อนนะ)';if(left<=0)hardReset()},1000);
 }
 const save=(cv,name)=>{const a=document.createElement('a');a.download=name;a.href=cv.toDataURL('image/png');a.click()};
 $('dlF').onclick=()=>save($('front'),'game-national-card-front.png');
 $('dlB').onclick=()=>save($('back'),'game-national-card-back.png');
 $('dlA').onclick=()=>{const c=document.createElement('canvas');c.width=2022;c.height=2600;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,2022,2600);g.drawImage($('front'),0,0);g.drawImage($('back'),0,1324);save(c,'game-national-card.png')};
-$('again').onclick=resetAll;
+$('again').onclick=hardReset;
 function resetAll(){
   stopPhone();
   document.querySelectorAll('input[type=text],input[type=number],input[type=date]').forEach(i=>i.value='');
@@ -508,16 +553,19 @@ async function phoneMain(){
     $('pcgo').onclick=()=>{code=$('pcin').value.trim();if(code){localStorage.setItem('phoneCode',code);$('pcode').classList.add('hide');$('pv-idle').classList.remove('hide');phoneRun()}};return}
   localStorage.setItem('phoneCode',code);phoneRun();
 }
-let pN=0,pA=0,pstate='';
+let pN=0,pA=0,pstate='',pFirst=true;
 async function phoneRun(){
-  const slow=setTimeout(()=>{$('pidh').textContent='เชื่อมต่อช้า…';$('perr').textContent='ตรวจสอบอินเทอร์เน็ต และ Rules ของ Firebase'},10000);
-  try{await initFirebase()}catch(e){clearTimeout(slow);$('pidh').textContent='เชื่อมต่อไม่ได้';$('perr').textContent=e.message;return}
+  const say=(h,e)=>{$('pidh').textContent=h;$('perr').textContent=e||''};
+  try{await initFirebase((i,n)=>say('กำลังเชื่อมต่อ… (ครั้งที่ '+i+'/'+n+')'))}
+  catch(e){say('เชื่อมต่อไม่ได้ กำลังรีเฟรชหน้า…',e.message);setTimeout(safeReload,4000);return}
   const r=db.ref('stations/'+code),pr=r.child('phone');ref=r;
+  startWatchdog(m=>{if(m)say('เชื่อมต่อหลุด…',m)},true);
   db.ref('.info/connected').on('value',s=>{
     if(!s.val())return;
     pr.onDisconnect().remove();
-    pr.set({ts:Date.now()}).then(()=>{clearTimeout(slow);if(!pstate||pstate==='idle')$('pidh').textContent='เชื่อมต่อแล้ว ✓ รอเจ้าหน้าที่…';$('perr').textContent=''})
-      .catch(e=>{clearTimeout(slow);$('pidh').textContent='เชื่อมต่อไม่ได้';$('perr').textContent=(e.code||e.message)+' — '+RULES});
+    retry(()=>withTimeout(pr.set({ts:Date.now()}),8000,'เขียนฐานข้อมูลไม่ได้'),5,(i,n)=>{if(i>1)say('กำลังเชื่อมต่อ… (ครั้งที่ '+i+'/'+n+')')})
+      .then(()=>{if(!pstate||pstate==='idle')say('เชื่อมต่อแล้ว ✓ รอเจ้าหน้าที่…','')})
+      .catch(e=>{say('เชื่อมต่อไม่ได้ กำลังรีเฟรชหน้า…',(e.code||e.message)+' — '+RULES);setTimeout(safeReload,5000)});
   });
   bindHold($('padP'),$('pfpt'),()=>{
     const s=Math.floor(Math.random()*4e9);
@@ -525,12 +573,14 @@ async function phoneRun(){
     else{pN=0;r.update({state:'fp_review',fpSeed:pA,fpSeed2:s})}
   });
   r.on('value',s=>{
-    const v=s.val()||{};const prev=pstate;pstate=v.state||'idle';
-    if(pstate==='await_fp'){phShow('fp');if(prev!=='await_fp'){pN=0;$('pfph').textContent='สแกนนิ้วมือข้างขวา (1/2)';$('pfpt').textContent=''}}
-    else if(pstate==='fp_review')phShow('wait');
-    else if(pstate==='done')phShow('done');
-    else phShow('idle');
-  },e=>{$('pidh').textContent='อ่านฐานข้อมูลไม่ได้';$('perr').textContent=(e.code||e.message)+' — '+RULES});
+    const v=s.val()||{};let st=v.state||'idle';const prev=pstate;
+    if(pFirst){pFirst=false;if(st==='done')st='idle'}
+    pstate=st;
+    if(st==='await_fp'){phShow('fp');if(prev!=='await_fp'){pN=0;$('pfph').textContent='สแกนนิ้วมือข้างขวา (1/2)';$('pfpt').textContent=''}}
+    else if(st==='fp_review')phShow('wait');
+    else if(st==='done'){phShow('done');setTimeout(()=>location.reload(),3000)}
+    else{phShow('idle');if(prev&&prev!=='idle')setTimeout(()=>location.reload(),500)}
+  },e=>{say('อ่านฐานข้อมูลไม่ได้',(e.code||e.message)+' — '+RULES)});
 }
 
 if(isPhone)phoneMain();
