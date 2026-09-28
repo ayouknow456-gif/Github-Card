@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ศูนย์ออกบัตร Game National Card</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Noto Sans Thai',sans-serif;background:#fff;color:#222}
+header{background:#1b9520;color:#fff;padding:16px 20px;font-size:1.2rem;font-weight:600;border-bottom:4px solid #14701a}
+main{max-width:1150px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1fr 330px 1fr;gap:20px;align-items:start}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.box{border:1px solid #999;padding:14px;background:#fff}
+.box h3{margin:0 0 6px;font-size:.95rem}
+.code{font-size:1.15rem;border-bottom:1px solid #333;padding:2px 4px;margin-bottom:12px;min-height:1.8em;letter-spacing:.04em}
+.frame{position:relative;width:100%;aspect-ratio:3/4;border:4px solid #000;overflow:hidden;background:#eee}
+.frame video,.frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.frame video{transform:scaleX(-1)}
+.rule{position:absolute;left:0;right:0;border-top:3px solid #000;z-index:2;text-align:right;font:italic 700 13px sans-serif;pointer-events:none}
+.rule span{padding-right:6px}
+.btns{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+button,.btn{font:inherit;font-size:1rem;border:3px solid #000;background:#fff;padding:8px 12px;cursor:pointer;text-align:center}
+button:hover,.btn:hover{background:#e8f6e8}
+button.primary{background:#1b9520;color:#fff;border-color:#14701a}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #ff9f00}
+label{display:block;font-size:.85rem;margin-top:8px}
+input[type=text],input[type=number],input[type=date],select{width:100%;font:inherit;padding:6px;border:0;border-bottom:1px solid #333;background:#fafafa}
+.row{display:grid;grid-template-columns:110px 1fr;gap:8px}
+#fp{position:relative;height:340px;border:1px solid #999;background:#fff;overflow:hidden;cursor:pointer}
+#fp canvas{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);height:92%}
+#fp p{position:relative;z-index:2;margin:0;padding:10px;text-align:center}
+#fp.scan::after{content:"";position:absolute;left:0;right:0;height:5px;background:#1b9520;box-shadow:0 0 12px #1b9520;animation:s 1s linear infinite}
+@keyframes s{from{top:0}to{top:100%}}
+#result{display:none;max-width:1100px;margin:0 auto;padding:20px;text-align:center}
+#result canvas{width:min(100%,640px);height:auto;border-radius:14px;box-shadow:0 3px 14px #0004;margin:8px}
+#msg{color:#b00;min-height:1.4em;text-align:center;margin-top:8px}
+small{color:#666}
+</style>
+</head>
+<body>
+<header>ศูนย์ออกบัตรประจำตัว — Game National Card</header>
+
+<div id="app">
+<main>
+  <section class="box">
+    <h3>เลขบัตรประชาชน</h3>
+    <div class="code" id="idno"></div>
+    <h3>รหัสหลังบัตรประชาชน</h3>
+    <div class="code" id="backno"></div>
+    <button id="reroll" style="font-size:.85rem;padding:4px 10px;border-width:2px">สุ่มเลขใหม่</button>
+    <div class="row">
+      <label>คำนำหน้า<select id="pre"><option>นาย</option><option>นางสาว</option><option>นาง</option><option>เด็กชาย</option><option>เด็กหญิง</option></select></label>
+      <label>ชื่อ<input type="text" id="fn" placeholder="สมมุติ"></label>
+    </div>
+    <label>นามสกุล<input type="text" id="ln" placeholder="จำลอง"></label>
+    <label>ชื่อภาษาอังกฤษ (First name)<input type="text" id="fne" placeholder="Sommut"></label>
+    <label>นามสกุลภาษาอังกฤษ (Last name)<input type="text" id="lne" placeholder="Jamlong"></label>
+    <label>วันเกิด<input type="date" id="dob"></label>
+    <small id="agev"></small>
+    <label>ศาสนา<select id="rel"><option>พุทธ</option><option>อิสลาม</option><option>คริสต์</option><option>ฮินดู</option><option>ซิกข์</option><option>ไม่ระบุ</option></select></label>
+    <label>ที่อยู่<input type="text" id="addr" placeholder="ไม่ระบุ"></label>
+    <label>อาชีพ<input type="text" id="job"></label>
+    <label>รายได้ (บาท/เดือน)<input type="number" id="inc" min="0"></label>
+    <label>เจ้าพนักงานออกบัตร (ชื่อเด็ก)<input type="text" id="off" placeholder="ชื่อผู้ออกบัตร"></label>
+  </section>
+
+  <section>
+    <div class="frame" id="frame">
+      <video id="cam" autoplay playsinline muted></video>
+      <img id="shot" alt="" style="display:none">
+    </div>
+    <div class="btns">
+      <button id="snap" class="primary">ถ่ายภาพ</button>
+      <button id="retake">ถ่ายอีกครั้ง</button>
+      <label class="btn" style="margin:0;font-size:1rem">อัพโหลดแทน<input type="file" id="file" accept="image/*" hidden></label>
+      <button id="cancel">ยกเลิก</button>
+    </div>
+  </section>
+
+  <section class="box">
+    <div id="fp" tabindex="0"><p id="fptxt">กด Space Bar เพื่อพิมพ์ลายนิ้วมือ<br><small>(บนมือถือให้แตะกล่องนี้)</small></p><canvas id="fpc" width="300" height="360"></canvas></div>
+    <div class="btns"><button id="issue" class="primary">ออกบัตร</button></div>
+    <div id="msg"></div>
+  </section>
+</main>
+</div>
+
+<section id="result">
+  <h2>บัตรพร้อมแล้ว</h2>
+  <canvas id="front" width="2022" height="1276"></canvas>
+  <canvas id="back" width="2022" height="1276"></canvas>
+  <div class="btns" style="max-width:360px;margin:16px auto">
+    <button id="dlF" class="primary">ดาวน์โหลดด้านหน้า</button>
+    <button id="dlB" class="primary">ดาวน์โหลดด้านหลัง</button>
+    <button id="dlA">ดาวน์โหลดทั้งสองด้าน (ภาพเดียว)</button>
+    <button id="again">ออกบัตรใบใหม่</button>
+  </div>
+</section>
+
+<script>
+const LOGO="data:image/png;base64,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";
+const $=id=>document.getElementById(id);
+let photo=null,fpCanvas=null,stream=null,idRaw='',laser='';
+
+/* ---------- height chart ---------- */
+[170,160,150,140,130,120,110,100].forEach((m,i)=>{const d=document.createElement('div');d.className='rule';d.style.top=(6+i*12.2)+'%';d.innerHTML='<span>'+m+'</span>';$('frame').appendChild(d)});
+
+/* ---------- ID numbers ---------- */
+const rnd=n=>Array.from({length:n},()=>Math.floor(Math.random()*10)).join('');
+const fmtId=s=>`${s[0]} ${s.slice(1,5)} ${s.slice(5,10)} ${s.slice(10,12)} ${s[12]}`;
+function newNumbers(){
+  let a=String(1+Math.floor(Math.random()*8))+rnd(11),sum=0;
+  for(let i=0;i<12;i++)sum+=(+a[i])*(13-i);
+  idRaw=a+((11-sum%11)%10);
+  const L=()=>String.fromCharCode(65+Math.floor(Math.random()*26));
+  laser=L()+L()+Math.floor(Math.random()*10)+'-'+rnd(7)+'-'+rnd(2);
+  $('idno').textContent=fmtId(idRaw);$('backno').textContent=laser;
+}
+newNumbers();$('reroll').onclick=newNumbers;
+
+/* ---------- camera ---------- */
+async function startCam(){
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});$('cam').srcObject=stream}
+  catch(e){$('msg').textContent='เปิดกล้องไม่ได้ ใช้ปุ่ม "อัพโหลดแทน" ได้'}
+}
+startCam();
+function showLive(){photo=null;$('shot').style.display='none';$('cam').style.display='block';if(!stream)startCam()}
+$('snap').onclick=()=>{
+  const v=$('cam');if(!v.videoWidth){$('msg').textContent='กล้องยังไม่พร้อม';return}
+  const w=v.videoWidth,h=v.videoHeight,tw=Math.min(w,h*.75),th=tw/.75;
+  const c=document.createElement('canvas');c.width=600;c.height=800;
+  const x=c.getContext('2d');x.translate(600,0);x.scale(-1,1);
+  x.drawImage(v,(w-tw)/2,(h-th)/2,tw,th,0,0,600,800);
+  setPhoto(c.toDataURL('image/jpeg',.92));
+};
+function setPhoto(u){photo=u;$('shot').src=u;$('shot').style.display='block';$('cam').style.display='none';$('msg').textContent=''}
+$('retake').onclick=showLive;
+$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>setPhoto(r.result);r.readAsDataURL(f)};
+$('cancel').onclick=resetAll;
+function resetAll(){
+  document.querySelectorAll('input[type=text],input[type=number],input[type=date]').forEach(i=>i.value='');
+  $('agev').textContent='';fpCanvas=null;$('fpc').getContext('2d').clearRect(0,0,300,360);$('fptxt').style.display='block';
+  newNumbers();showLive();$('msg').textContent='';
+  $('result').style.display='none';$('app').style.display='block';
+}
+$('dob').onchange=()=>{const d=new Date($('dob').value);if(isNaN(d))return;const n=new Date();let a=n.getFullYear()-d.getFullYear();if(n<new Date(n.getFullYear(),d.getMonth(),d.getDate()))a--;$('agev').textContent='อายุ '+a+' ปี'};
+
+/* ---------- realistic fingerprint (ridge phase field with minutiae) ---------- */
+function makeFP(){
+  const W=300,H=360,c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d'),img=g.createImageData(W,H),d=img.data;
+  const cx=W/2+(Math.random()*30-15),cy=H*.52+(Math.random()*30-15);
+  const rot=(Math.random()-.5)*.6,cs=Math.cos(rot),sn=Math.sin(rot);
+  const whorl=Math.random()<.45,k=.66+Math.random()*.08;
+  const dis=[];for(let i=0;i<16;i++){const a=Math.random()*6.283,r=Math.random()*115;dis.push({x:cx+Math.cos(a)*r*.85,y:cy+Math.sin(a)*r*1.1,s:i%2?1:-1})}
+  const nz=[...Array(5)].map(()=>({fx:(Math.random()-.5)*.05,fy:(Math.random()-.5)*.05,p:Math.random()*6.28,a:.5+Math.random()*1.1}));
+  const seed=[...Array(6)].map(()=>Math.random()*6.28);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    let dx=x-cx,dy=y-cy;const px=dx*cs-dy*sn,py=dx*sn+dy*cs;
+    const base=whorl?Math.hypot(px*1.0,py*.88):Math.hypot(px*.82,py<0?py*.72:py*1.55);
+    let ph=base*k;
+    for(const q of dis)ph+=q.s*Math.atan2(y-q.y,x-q.x);
+    for(const n of nz)ph+=n.a*Math.sin(n.fx*x+n.fy*y+n.p);
+    const v=Math.cos(ph);
+    let ridge=Math.max(0,Math.min(1,(v+.15)*2.2));
+    const ex=(x-W/2)/(W*.44),ey=(y-H/2)/(H*.47);
+    let m=1-Math.pow(ex*ex+ey*ey,3.2);
+    m+=.18*Math.sin(x*.09+seed[0])*Math.sin(y*.07+seed[1])+(Math.random()-.5)*.35;
+    m=Math.max(0,Math.min(1,m*1.4));
+    const grain=Math.random()>.93?.35:1;
+    const a=ridge*m*grain*(.8+.2*Math.random());
+    const i=(y*W+x)*4;d[i]=18;d[i+1]=22;d[i+2]=40;d[i+3]=Math.round(a*255);
+  }
+  g.putImageData(img,0,0);return c;
+}
+function scanFP(){
+  const box=$('fp');if(box.classList.contains('scan'))return;
+  box.classList.add('scan');$('fptxt').innerHTML='กำลังสแกน...';
+  setTimeout(()=>{
+    box.classList.remove('scan');fpCanvas=makeFP();
+    const c=$('fpc'),x=c.getContext('2d');x.clearRect(0,0,300,360);x.drawImage(fpCanvas,0,0);
+    $('fptxt').innerHTML='<small>สแกนสำเร็จ ✓ (กดอีกครั้งเพื่อสแกนใหม่)</small>';
+  },1300);
+}
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName)){e.preventDefault();scanFP()}
+});
+$('fp').onclick=scanFP;
+
+/* ---------- Code 128-B barcode ---------- */
+const C128="212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112".split(' ');
+function code128(str){
+  const v=[104];for(const ch of str)v.push(ch.charCodeAt(0)-32);
+  let s=104;for(let i=1;i<v.length;i++)s+=v[i]*i;
+  v.push(s%103,106);return v.map(i=>C128[i]).join('');
+}
+function drawBarcode(g,X,Y,h,m,str){
+  const p=code128(str);let w=0;for(const c of p)w+=+c*m;
+  g.fillStyle='#fff';g.fillRect(X-10*m,Y-6,w+20*m,h+12);
+  g.fillStyle='#000';let px=X,bar=true;
+  for(const c of p){const wd=+c*m;if(bar)g.fillRect(px,Y,wd,h);px+=wd;bar=!bar}
+  return w;
+}
+
+/* ---------- card drawing ---------- */
+const TH=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const EN=['Jan.','Feb.','Mar.','Apr.','May','Jun.','Jul.','Aug.','Sep.','Oct.','Nov.','Dec.'];
+const PRE_EN={'นาย':'Mr.','นางสาว':'Miss','นาง':'Mrs.','เด็กชาย':'Master','เด็กหญิง':'Miss'};
+const thDate=d=>`${d.getDate()} ${TH[d.getMonth()]} ${d.getFullYear()+543}`;
+const enDate=d=>`${EN[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+const load=s=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=s});
+const F='"Noto Sans Thai",sans-serif';
+function T(g,t,x,y,size,w,col,align,maxW){
+  g.font=`${w} ${size}px ${F}`;g.fillStyle=col;g.textAlign=align||'left';g.fillText(t,x,y,maxW);
+}
+function rrect(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
+function bg(g,W,H,logo,dark){
+  const gr=g.createLinearGradient(0,0,W,H);
+  gr.addColorStop(0,'#d7e6f6');gr.addColorStop(.5,'#f4e6f1');gr.addColorStop(1,'#d3e5f4');
+  g.fillStyle=gr;rrect(g,0,0,W,H,34);g.fill();
+  g.save();rrect(g,0,0,W,H,34);g.clip();
+  for(let i=0;i<46;i++){
+    g.beginPath();
+    for(let x=0;x<=W;x+=6){
+      const y=i*15-20+Math.sin(x*.018+i*.32)*20+Math.sin(x*.047+i*.7)*7;
+      x?g.lineTo(x,y):g.moveTo(x,y);
+    }
+    g.strokeStyle=i%3?'rgba(70,120,190,.13)':'rgba(190,90,160,.12)';g.lineWidth=1.2;g.stroke();
+  }
+  if(logo){g.globalAlpha=.10;const s=380/Math.max(logo.width,logo.height);g.drawImage(logo,W/2-logo.width*s/2+60,H/2-logo.height*s/2,logo.width*s,logo.height*s);g.globalAlpha=1}
+  g.translate(W/2,H/2);g.rotate(-.42);
+  g.font=`600 46px ${F}`;g.fillStyle='rgba(170,30,60,.10)';g.textAlign='center';
+  for(let r=-3;r<=3;r++)g.fillText('SPECIMEN • บัตรจำลอง • SPECIMEN • บัตรจำลอง',0,r*150);
+  g.restore();
+  g.strokeStyle='rgba(30,60,110,.35)';g.lineWidth=2;rrect(g,2,2,W-4,H-4,33);g.stroke();
+}
+function chip(g,x,y){
+  const gr=g.createLinearGradient(x,y,x+96,y+74);gr.addColorStop(0,'#f6e08a');gr.addColorStop(.5,'#c9a53d');gr.addColorStop(1,'#efd77a');
+  g.fillStyle=gr;rrect(g,x,y,96,74,10);g.fill();g.strokeStyle='#8a6d1c';g.lineWidth=1.5;g.stroke();
+  g.beginPath();g.moveTo(x+32,y);g.lineTo(x+32,y+74);g.moveTo(x+64,y);g.lineTo(x+64,y+74);g.moveTo(x,y+25);g.lineTo(x+96,y+25);g.moveTo(x,y+49);g.lineTo(x+96,y+49);g.stroke();
+  g.strokeRect(x+32,y+25,32,24);
+}
+function sign(g,x,y,name){
+  g.save();g.strokeStyle='#1a2a6c';g.lineWidth=2.2;g.lineCap='round';g.beginPath();
+  let px=x,py=y;g.moveTo(px,py);
+  const n=Math.max(4,Math.min(name.length,9));
+  for(let i=0;i<n;i++){
+    const cx1=px+Math.random()*16,cy1=y-Math.random()*40,cx2=px+16+Math.random()*16,cy2=y+Math.random()*24-8;
+    px+=18+Math.random()*10;py=y+Math.random()*12-6;g.bezierCurveTo(cx1,cy1,cx2,cy2,px,py);
+  }
+  g.bezierCurveTo(px+20,py+6,px+50,py-14,px+80,py+2);g.stroke();g.restore();
+}
+async function drawFront(c,d){
+  const g=c.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,1011,638);
+  const logo=await load(LOGO);bg(g,1011,638,logo);
+  const ink='#101828',lab='#3a5583';
+  if(logo){const s=84/Math.max(logo.width,logo.height);g.drawImage(logo,26,16,logo.width*s,logo.height*s)}
+  T(g,'บัตรประจำตัวประชาชน',128,60,38,600,'#1b2f5a');
+  T(g,'Game National Card',128,90,22,400,'#1b2f5a');
+  T(g,'เลขประจำตัวประชาชน  Identification Number',300,128,15,400,lab);
+  T(g,fmtId(idRaw),300,172,42,600,ink);
+  chip(g,36,150);
+  const L=(a,b,x,y,mw)=>{T(g,a,x,y-28,14,400,lab);T(g,b||'-',x,y,26,600,ink,'left',mw)};
+  L('ศาสนา  Religion',d.rel,36,290,240);
+  L('อาชีพ  Occupation',d.job,36,350,240);
+  L('รายได้  Income (บาท/เดือน)',d.inc?Number(d.inc).toLocaleString('th-TH'):'',36,410,240);
+  T(g,'ชื่อตัวและชื่อสกุล',300,212,14,400,lab);
+  T(g,`${d.pre} ${d.fn} ${d.ln}`,300,246,30,600,ink,'left',440);
+  T(g,'Name',300,278,14,400,lab);T(g,`${PRE_EN[d.pre]} ${d.fne}`,300,304,26,600,ink,'left',440);
+  T(g,'Last name',300,330,14,400,lab);T(g,d.lne,300,356,26,600,ink,'left',440);
+  T(g,'เกิดวันที่  Date of Birth',300,388,14,400,lab);
+  T(g,`${thDate(d.dobD)}   ${enDate(d.dobD)}`,300,416,24,600,ink,'left',450);
+  T(g,'ที่อยู่  Address',36,458,14,400,lab);
+  T(g,d.addr||'ไม่ระบุ',36,488,24,600,ink,'left',700);
+  T(g,'วันออกบัตร  Date of Issue',36,552,14,400,lab);
+  T(g,`${thDate(d.issue)}   ${enDate(d.issue)}`,36,580,22,600,ink,'left',330);
+  T(g,'วันบัตรหมดอายุ  Date of Expiry',36,606,14,400,lab);
+  T(g,`${thDate(d.exp)}   ${enDate(d.exp)}`,36,630,20,600,ink,'left',330);
+  sign(g,470,568,d.off||'x');
+  T(g,d.off?`( ${d.off} )`:'',560,600,18,400,ink,'center',260);
+  T(g,'เจ้าพนักงานออกบัตร',560,624,14,400,lab,'center');
+  const ph=await load(photo);
+  if(ph){g.save();rrect(g,762,128,206,266,6);g.clip();
+    g.globalAlpha=1;g.drawImage(ph,762,128,206,266);g.restore();
+    g.strokeStyle='rgba(20,40,90,.6)';g.lineWidth=2;rrect(g,762,128,206,266,6);g.stroke();
+    g.save();g.globalAlpha=.22;g.filter='grayscale(1)';g.drawImage(ph,872,470,90,116);g.restore();
+  }
+  T(g,'Game National Card • SPECIMEN',965,624,13,400,'#7a1c3a','right');
+}
+async function drawBack(c,d){
+  const g=c.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,1011,638);
+  const logo=await load(LOGO);bg(g,1011,638,logo);
+  const ink='#101828',lab='#3a5583';
+  g.fillStyle='#1b2f5a';g.save();rrect(g,0,0,1011,86,34);g.clip();g.fillRect(0,0,1011,86);g.restore();g.fillRect(0,40,1011,46);
+  if(logo){const s=62/Math.max(logo.width,logo.height);g.drawImage(logo,28,12,logo.width*s,logo.height*s)}
+  T(g,'Game National Card',110,52,30,600,'#fff');
+  T(g,'บัตรจำลองเพื่อการเรียนรู้',983,52,20,400,'#ffd57a','right');
+  T(g,'ลายพิมพ์นิ้วมือ  Fingerprint',60,132,15,400,lab);
+  g.fillStyle='#fff';rrect(g,50,144,230,290,10);g.fill();g.strokeStyle='rgba(30,60,110,.4)';g.lineWidth=1.5;g.stroke();
+  if(fpCanvas)g.drawImage(fpCanvas,58,150,214,257*1.0*1.0);
+  T(g,'Laser Code',330,150,16,400,lab);
+  T(g,laser,330,206,58,600,ink,'left',620);
+  T(g,'เลขประจำตัวประชาชน  Identification Number',330,262,15,400,lab);
+  T(g,fmtId(idRaw),330,296,30,600,ink);
+  const m=2.6;const w=drawBarcode(g,340,330,92,m,idRaw);
+  T(g,idRaw.split('').join(' '),340+w/2,452,20,400,ink,'center');
+  T(g,'บัตรนี้เป็นบัตรจำลองที่ออกโดยเด็กๆ ในกิจกรรมการเรียนรู้ ไม่ใช่เอกสารราชการจริง',505,530,18,400,'#7a1c3a','center',900);
+  T(g,'This card is a simulation for educational play. It is not a real government document.',505,560,16,400,'#7a1c3a','center',900);
+  T(g,`ออกบัตร ณ ศูนย์ออกบัตรจำลอง  |  ${thDate(d.issue)}`,505,606,16,400,lab,'center');
+}
+function collect(){
+  const dobD=new Date($('dob').value),issue=new Date(),exp=new Date(issue.getFullYear()+8,dobD.getMonth(),dobD.getDate());
+  return{pre:$('pre').value,fn:$('fn').value.trim(),ln:$('ln').value.trim(),fne:$('fne').value.trim(),lne:$('lne').value.trim(),
+    dobD,issue,exp,rel:$('rel').value,addr:$('addr').value.trim(),job:$('job').value.trim(),inc:$('inc').value,off:$('off').value.trim()};
+}
+$('issue').onclick=async()=>{
+  const m=$('msg');
+  if(!$('fn').value.trim()||!$('ln').value.trim()){m.textContent='กรุณากรอกชื่อและนามสกุล';return}
+  if(!$('dob').value){m.textContent='กรุณาเลือกวันเกิด';return}
+  if(!photo){m.textContent='กรุณาถ่ายภาพหรืออัพโหลดรูปก่อน';return}
+  if(!fpCanvas){m.textContent='กรุณากด Space Bar เพื่อพิมพ์ลายนิ้วมือ';return}
+  await Promise.all([document.fonts.load('400 20px "Noto Sans Thai"'),document.fonts.load('600 20px "Noto Sans Thai"')]);
+  const d=collect();
+  await drawFront($('front'),d);await drawBack($('back'),d);
+  $('app').style.display='none';$('result').style.display='block';scrollTo(0,0);
+};
+const save=(cv,name)=>{const a=document.createElement('a');a.download=name;a.href=cv.toDataURL('image/png');a.click()};
+$('dlF').onclick=()=>save($('front'),'game-national-card-front.png');
+$('dlB').onclick=()=>save($('back'),'game-national-card-back.png');
+$('dlA').onclick=()=>{const c=document.createElement('canvas');c.width=2022;c.height=2600;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,2022,2600);g.drawImage($('front'),0,0);g.drawImage($('back'),0,1324);save(c,'game-national-card.png')};
+$('again').onclick=resetAll;
+</script>
+</body>
+</html>
